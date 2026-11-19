@@ -1,0 +1,55 @@
+# ---- Claude / local notes (never push) ----
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+watch_app_handoff.md
+
+# ---- Signing keys (never push) ----
+*.jks
+*.keystore
+*.p12
+*.pem
+keystore.properties
+keystore.b64
+*.b64
+
+# ---- Gradle ----
+.gradle/
+build/
+**/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# ---- Android build outputs ----
+*.apk
+*.aab
+*.ap_
+*.dex
+output-metadata.json
+
+# ---- Android Studio / IntelliJ ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.navigation/
+
+# ---- VS Code ----
+.vscode/
+
+# ---- Kotlin ----
+.kotlin/
+
+# ---- Logs ----
+*.log
+
+# ---- OS files ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Environment / secrets ----
+.env
+.env.*
