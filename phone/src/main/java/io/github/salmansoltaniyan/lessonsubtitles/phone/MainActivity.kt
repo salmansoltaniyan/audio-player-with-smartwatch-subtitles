@@ -7,12 +7,16 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.OpenableColumns
+import android.provider.DocumentsContract
 import android.provider.Settings
+import android.text.InputType
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -25,25 +29,36 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.common.util.concurrent.ListenableFuture
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var queueInfo: TextView
     private lateinit var lessonTitle: TextView
     private lateinit var segmentText: TextView
     private lateinit var segmentInfo: TextView
     private lateinit var timeText: TextView
     private lateinit var watchStatus: TextView
     private lateinit var playButton: Button
+    private lateinit var endModeButton: Button
     private lateinit var updateButton: Button
+    private lateinit var miniBar: View
+    private lateinit var miniTitle: TextView
+    private lateinit var miniPlay: Button
+    private lateinit var bottomNav: BottomNavigationView
+    private lateinit var panels: Map<Int, View>
+
+    lateinit var libraryPanel: LibraryPanel
+        private set
+    lateinit var playlistsPanel: PlaylistsPanel
+        private set
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private val controller: MediaController?
@@ -53,60 +68,86 @@ class MainActivity : AppCompatActivity() {
             null
         }
 
-    /** The MP3 picked in step 1, waiting for its JSON in step 2. */
-    private var pendingAudio: Uri? = null
+    /** The lessons folder (document tree), or null if not chosen yet. */
+    var lessonsFolder: Uri? = null
+        private set
+    private var restoreDone = false
 
-    private val pickAudio = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    private val pickFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri == null) return@registerForActivityResult
-        keepReadPermission(uri)
-        pendingAudio = uri
-        Toast.makeText(this, R.string.pick_json_hint, Toast.LENGTH_LONG).show()
-        pickJson.launch(arrayOf("*/*"))
-    }
-
-    private val pickJson = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        val audio = pendingAudio
-        pendingAudio = null
-        if (uri == null || audio == null) return@registerForActivityResult
-        loadLesson(audio, uri)
+        try {
+            // Read: play lessons. Write: save playlists in the "playlists" sub folder.
+            contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        } catch (_: SecurityException) {
+            // Reading still works for now; it may need to be chosen again after a restart.
+        }
+        Prefs.setLessonsFolder(this, uri)
+        lessonsFolder = uri
+        reloadLibrary()
     }
 
     private val askNotifications =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* optional */ }
 
     private val playerListener = object : Player.Listener {
-        override fun onIsPlayingChanged(isPlaying: Boolean) = refreshPlayButton()
+        override fun onIsPlayingChanged(isPlaying: Boolean) = refreshPlayButtons()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        queueInfo = findViewById(R.id.queueInfo)
         lessonTitle = findViewById(R.id.lessonTitle)
         segmentText = findViewById(R.id.segmentText)
         segmentInfo = findViewById(R.id.segmentInfo)
         timeText = findViewById(R.id.timeText)
         watchStatus = findViewById(R.id.watchStatus)
         playButton = findViewById(R.id.playButton)
+        endModeButton = findViewById(R.id.endModeButton)
         updateButton = findViewById(R.id.updateButton)
+        miniBar = findViewById(R.id.miniBar)
+        miniTitle = findViewById(R.id.miniTitle)
+        miniPlay = findViewById(R.id.miniPlay)
+        bottomNav = findViewById(R.id.bottomNav)
 
-        findViewById<Button>(R.id.openButton).setOnClickListener { pickAudio.launch(arrayOf("audio/*")) }
+        panels = mapOf(
+            R.id.nav_player to findViewById(R.id.playerPanel),
+            R.id.nav_playlists to findViewById(R.id.playlistsPanel),
+            R.id.nav_library to findViewById(R.id.libraryPanel),
+        )
+        bottomNav.setOnItemSelectedListener { item ->
+            showPanel(item.itemId)
+            true
+        }
+
+        // Player tab
         findViewById<Button>(R.id.prevButton).setOnClickListener { previousSegment() }
         findViewById<Button>(R.id.nextButton).setOnClickListener { nextSegment() }
+        findViewById<Button>(R.id.prevLessonButton).setOnClickListener { previousLesson() }
+        findViewById<Button>(R.id.nextLessonButton).setOnClickListener { nextLesson() }
         playButton.setOnClickListener { togglePlay() }
+        miniPlay.setOnClickListener { togglePlay() }
+        miniTitle.setOnClickListener { bottomNav.selectedItemId = R.id.nav_player }
+        endModeButton.setOnClickListener { chooseEndMode() }
+        refreshEndModeButton()
         updateButton.setOnClickListener { checkForUpdate() }
         findViewById<TextView>(R.id.versionText).text = getString(R.string.version, BuildConfig.VERSION_NAME)
-
-        findViewById<MaterialSwitch>(R.id.repeatSwitch).apply {
-            isChecked = Prefs.repeatLesson(this@MainActivity)
-            setOnCheckedChangeListener { _, checked ->
-                Prefs.setRepeatLesson(this@MainActivity, checked)
-                controller?.repeatMode = repeatModeFor(checked)
-            }
-        }
         findViewById<MaterialSwitch>(R.id.autoOpenSwitch).apply {
             isChecked = Prefs.autoOpenWatch(this@MainActivity)
             setOnCheckedChangeListener { _, checked -> Prefs.setAutoOpenWatch(this@MainActivity, checked) }
+        }
+
+        libraryPanel = LibraryPanel(this, findViewById(R.id.libraryPanel))
+        playlistsPanel = PlaylistsPanel(this, findViewById(R.id.playlistsPanel))
+
+        onBackPressedDispatcher.addCallback(this) {
+            if (playlistsPanel.onBack() || libraryPanel.onBack()) return@addCallback
+            isEnabled = false
+            onBackPressedDispatcher.onBackPressed()
+            isEnabled = true
         }
 
         // Android 13+: the playback notification needs this permission to be visible.
@@ -120,13 +161,12 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
-                    combine(LessonStore.lesson, LessonStore.currentIndex) { lesson, index ->
-                        lesson to index
-                    }.collect { (lesson, index) -> showSegment(lesson, index) }
+                    combine(LessonStore.lesson, LessonStore.currentIndex, LessonStore.currentFile) { l, i, f ->
+                        Triple(l, i, f)
+                    }.collect { (lesson, index, file) -> showSegment(lesson, index, file) }
                 }
-                launch {
-                    LessonStore.positionMs.collect { ms -> showTime(ms) }
-                }
+                launch { LessonStore.positionMs.collect { showTime() } }
+                launch { LessonStore.durationMs.collect { showTime() } }
                 launch {
                     LessonStore.watchConnected.collect { connected ->
                         watchStatus.setText(
@@ -140,6 +180,15 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        lessonsFolder = Prefs.lessonsFolder(this)
+        if (lessonsFolder != null) {
+            reloadLibrary()
+        } else {
+            libraryPanel.showFolder(null)
+            playlistsPanel.render()
+            bottomNav.selectedItemId = R.id.nav_library
+        }
     }
 
     override fun onStart() {
@@ -150,11 +199,8 @@ class MainActivity : AppCompatActivity() {
         future.addListener({
             val c = controller ?: return@addListener
             c.addListener(playerListener)
-            c.repeatMode = repeatModeFor(Prefs.repeatLesson(this))
-            // A lesson was picked before the controller was ready.
-            val lesson = LessonStore.lesson.value
-            if (lesson != null && c.mediaItemCount == 0) setMedia(c, lesson)
-            refreshPlayButton()
+            refreshPlayButtons()
+            restoreLastPlayed()
         }, ContextCompat.getMainExecutor(this))
 
         lifecycleScope.launch { WatchLink.connectedNodes(this@MainActivity) }
@@ -166,63 +212,116 @@ class MainActivity : AppCompatActivity() {
         super.onStop()
     }
 
-    private fun repeatModeFor(repeat: Boolean) =
-        if (repeat) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+    // ---- Tabs ----
 
-    // ---- Loading a lesson ----
+    private fun showPanel(id: Int) {
+        for ((panelId, panel) in panels) panel.visibility = if (panelId == id) View.VISIBLE else View.GONE
+        refreshMiniBar()
+    }
 
-    private fun loadLesson(audio: Uri, json: Uri) {
+    private fun refreshMiniBar() {
+        val file = LessonStore.currentFile.value
+        val onPlayer = bottomNav.selectedItemId == R.id.nav_player
+        miniBar.visibility = if (!onPlayer && file != null) View.VISIBLE else View.GONE
+        miniTitle.text = file?.title ?: ""
+    }
+
+    // ---- Lessons folder ----
+
+    fun chooseFolder() = pickFolder.launch(lessonsFolder)
+
+    /** Scans the lessons folder and loads the playlists. */
+    fun reloadLibrary() {
+        val folder = lessonsFolder ?: return
+        libraryPanel.showFolder(folder)
+        libraryPanel.setRefreshing(true)
         lifecycleScope.launch {
-            val lesson = try {
-                withContext(Dispatchers.IO) {
-                    val text = contentResolver.openInputStream(json)!!.bufferedReader(Charsets.UTF_8)
-                        .use { it.readText() }
-                    Lesson.parse(audio, displayName(audio), text)
-                }
+            try {
+                LessonStore.library.value = Library.scan(this@MainActivity, folder)
+                LessonStore.playlists.value = Playlists.load(this@MainActivity, folder)
             } catch (e: Exception) {
-                toast(getString(R.string.json_error, e.message ?: e.javaClass.simpleName))
-                return@launch
+                toast(getString(R.string.folder_error, e.message ?: e.javaClass.simpleName))
+            } finally {
+                libraryPanel.setRefreshing(false)
             }
-
-            if (lesson.audioNameInJson.isNotEmpty() && lesson.audioNameInJson != lesson.title) {
-                toast(getString(R.string.name_mismatch, lesson.audioNameInJson))
-            }
-
-            LessonStore.lesson.value = lesson
-            controller?.let { setMedia(it, lesson) }
+            restoreLastPlayed()
         }
     }
 
-    private fun setMedia(c: MediaController, lesson: Lesson) {
-        val item = MediaItem.Builder()
-            .setUri(lesson.audioUri)
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(lesson.title).build())
-            .build()
-        c.setMediaItem(item)
+    fun folderName(uri: Uri): String =
+        DocumentsContract.getTreeDocumentId(uri).substringAfter(':').ifEmpty { "/" }
+
+    // ---- Queue ----
+
+    fun folderQueue(folder: String): PlayQueue = PlayQueue(
+        id = "folder:$folder",
+        title = folder.ifEmpty { getString(R.string.root_folder) },
+        items = LessonStore.library.value.filter { it.folder == folder },
+    )
+
+    fun playlistQueue(playlist: Playlist): PlayQueue {
+        val byPath = LessonStore.library.value.associateBy { it.relPath }
+        return PlayQueue(
+            id = "playlist:${playlist.name}",
+            title = playlist.name,
+            items = playlist.lessons.mapNotNull { byPath[it] },
+        )
+    }
+
+    /** Loads [queue] into the player and starts at [startPath] (or the first lesson). */
+    fun playQueue(queue: PlayQueue, startPath: String?, positionMs: Long = 0, autoPlay: Boolean = true) {
+        val c = controller
+        if (c == null) {
+            toast(getString(R.string.player_not_ready))
+            return
+        }
+        if (queue.items.isEmpty()) {
+            toast(getString(R.string.queue_empty))
+            return
+        }
+        val start = queue.items.indexOfFirst { it.relPath == startPath }.coerceAtLeast(0)
+        LessonStore.queue.value = queue // before the media items: the service reads it
+        c.setMediaItems(queue.items.map(::mediaItemFor), start, positionMs)
         c.prepare()
-    }
-
-    /** Lets the background player keep reading the MP3 later (e.g. after the app restarts). */
-    private fun keepReadPermission(uri: Uri) {
-        try {
-            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        } catch (_: SecurityException) {
-            // Some file providers do not offer persistable permissions; reading still works now.
+        if (autoPlay) {
+            c.play()
+            bottomNav.selectedItemId = R.id.nav_player
         }
     }
 
-    private fun displayName(uri: Uri): String =
-        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
-            ?: uri.lastPathSegment
-            ?: "lesson"
+    private fun mediaItemFor(file: LessonFile): MediaItem = MediaItem.Builder()
+        .setMediaId(file.relPath)
+        .setUri(file.audioUri)
+        .setMediaMetadata(MediaMetadata.Builder().setTitle(file.title).build())
+        .build()
+
+    /** When the app starts with an empty player, goes back to where the user was (paused). */
+    private fun restoreLastPlayed() {
+        if (restoreDone) return
+        val c = controller ?: return
+        if (c.mediaItemCount > 0 || LessonStore.queue.value != null) {
+            restoreDone = true // the player is already playing something
+            return
+        }
+        if (LessonStore.library.value.isEmpty()) return // not scanned yet
+        restoreDone = true
+        val last = Prefs.lastPlayed(this) ?: return
+        val queue = when {
+            last.queueId.startsWith("playlist:") -> LessonStore.playlists.value
+                .firstOrNull { "playlist:${it.name}" == last.queueId }?.let(::playlistQueue)
+            last.queueId.startsWith("folder:") -> folderQueue(last.queueId.removePrefix("folder:"))
+            else -> null
+        } ?: return
+        if (queue.items.none { it.relPath == last.lessonPath }) return
+        playQueue(queue, last.lessonPath, last.positionMs, autoPlay = false)
+    }
 
     // ---- Player buttons ----
 
     private fun togglePlay() {
         val c = controller ?: return
-        if (LessonStore.lesson.value == null) {
-            Toast.makeText(this, R.string.no_lesson, Toast.LENGTH_SHORT).show()
+        if (c.mediaItemCount == 0) {
+            toast(getString(R.string.no_lesson_hint))
             return
         }
         if (c.isPlaying) {
@@ -255,31 +354,102 @@ class MainActivity : AppCompatActivity() {
         c.seekTo((next.start * 1000).toLong())
     }
 
-    // ---- Display ----
-
-    private fun refreshPlayButton() {
-        playButton.setText(if (controller?.isPlaying == true) R.string.pause else R.string.play)
+    private fun previousLesson() {
+        val c = controller ?: return
+        if (c.hasPreviousMediaItem()) c.seekToPreviousMediaItem() else c.seekTo(0)
     }
 
-    private fun showSegment(lesson: Lesson?, index: Int) {
-        lessonTitle.text = lesson?.title ?: getString(R.string.no_lesson)
+    private fun nextLesson() {
+        val c = controller ?: return
+        if (c.hasNextMediaItem()) c.seekToNextMediaItem() else toast(getString(R.string.last_lesson))
+    }
+
+    private fun chooseEndMode() {
+        val modes = EndMode.entries
+        val current = Prefs.endMode(this)
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.end_mode_title)
+            .setSingleChoiceItems(
+                modes.map { getString(it.labelRes) }.toTypedArray(),
+                modes.indexOf(current),
+            ) { dialog, which ->
+                Prefs.setEndMode(this, modes[which]) // the service applies it
+                refreshEndModeButton()
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    private fun refreshEndModeButton() {
+        endModeButton.text = getString(R.string.end_mode_button, getString(Prefs.endMode(this).labelRes))
+    }
+
+    // ---- Display ----
+
+    private fun refreshPlayButtons() {
+        val label = if (controller?.isPlaying == true) R.string.pause else R.string.play
+        playButton.setText(label)
+        miniPlay.setText(label)
+    }
+
+    private fun showSegment(lesson: Lesson?, index: Int, file: LessonFile?) {
+        val queue = LessonStore.queue.value
+        val position = queue?.items?.indexOfFirst { it.relPath == file?.relPath } ?: -1
+        queueInfo.text = if (queue == null || position < 0) "" else
+            getString(R.string.queue_info, queue.title, position + 1, queue.items.size)
+        lessonTitle.text = file?.title ?: getString(R.string.no_lesson)
+
         val segment = lesson?.segments?.getOrNull(index)
-        segmentText.text = segment?.text ?: ""
+        segmentText.text = when {
+            segment != null -> segment.text
+            file != null && file.jsonUri == null -> getString(R.string.no_subtitles)
+            else -> ""
+        }
         segmentText.textDirection =
             if (segment?.lang.equals("persian", ignoreCase = true)) View.TEXT_DIRECTION_RTL
             else View.TEXT_DIRECTION_LTR
         segmentInfo.text = if (lesson == null || segment == null) "" else
             getString(R.string.segment_info, segment.row, index + 1, lesson.segments.size, segment.lang)
-        showTime(LessonStore.positionMs.value)
+        showTime()
+        refreshMiniBar()
+        libraryPanel.setPlaying(file?.relPath)
+        playlistsPanel.setPlaying(file?.relPath)
     }
 
-    private fun showTime(positionMs: Long) {
-        val lesson = LessonStore.lesson.value
-        timeText.text = if (lesson == null) "" else
-            "${formatTime(positionMs / 1000)} / ${formatTime(lesson.durationSec.toLong())}"
+    private fun showTime() {
+        val duration = LessonStore.durationMs.value
+        timeText.text = if (LessonStore.currentFile.value == null) "" else
+            "${formatTime(LessonStore.positionMs.value / 1000)} / ${formatTime(duration / 1000)}"
     }
 
     private fun formatTime(totalSec: Long): String = "%d:%02d".format(totalSec / 60, totalSec % 60)
+
+    // ---- Small helpers used by the panels ----
+
+    fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+
+    /** Asks for a line of text (e.g. a playlist name). */
+    fun promptText(title: Int, initial: String, onOk: (String) -> Unit) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            setText(initial)
+            setSelection(initial.length)
+        }
+        val box = FrameLayout(this).apply {
+            val pad = (20 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad / 2, pad, 0)
+            addView(input)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setView(box)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val text = input.text.toString().trim()
+                if (text.isNotEmpty()) onOk(text)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
 
     // ---- Updates from GitHub releases ----
 
@@ -404,8 +574,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun downloadMessage(percent: Int) =
         if (percent >= 0) getString(R.string.downloading, percent) else getString(R.string.downloading_unknown)
-
-    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 
     private companion object {
         const val RESTART_WINDOW_SEC = 1.5

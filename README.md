@@ -29,14 +29,43 @@ Watch controls:
 The phone and the watch talk through the Wearable Data Layer API (`MessageClient`, `ChannelClient`).
 For this to work, both apps use the same `applicationId` and are signed with the same key.
 
+## Lessons folder and playlists
+
+The phone app works with one **lessons folder** that you choose once (Library tab). The folder and
+all its sub folders are scanned for audio files, sorted by name (`gang9` comes before `gang11`).
+
+- **Library tab:** all lessons, grouped by sub folder. Tap a lesson to play its sub folder from there.
+  Long-press to select lessons and add them to a playlist. Pull down to scan again.
+- **Playlists tab:** your own playlists. Create, rename, delete; open one to play from any lesson,
+  drag ≡ to reorder, ✕ to remove a lesson.
+- **Player tab:** ⏮ Lesson / Lesson ⏭ move through the playlist (or sub folder). "At the end" sets
+  what happens when a lesson ends: stop, repeat the lesson, play the next lesson, or play the next
+  lesson and start again after the last one.
+- The app remembers the last playlist, lesson and position.
+
+Playlists are saved in the lessons folder, in `playlists/<name>.json`, so they survive a reinstall and
+can be edited on a computer. Lesson paths are relative to the lessons folder:
+
+```json
+{
+ "name": "New words chapter 11",
+ "lessons": [
+  "gang11/gang11_output9_learn_test_2026-11-19_21-03-01.mp3",
+  "gang12/gang12_output1_learn_2026-11-25_20-10-44.mp3"
+ ]
+}
+```
+
+A lesson that was moved or deleted is shown as "Not found" in the playlist and skipped when playing.
+
 ## Lesson files
 
-Each lesson is an MP3 file with a JSON timeline next to it that has the same name:
+Each lesson is an audio file (usually MP3) with a JSON timeline. The app pairs them like this:
 
-```
-lesson.mp3
-lesson.json
-```
+1. A JSON file with the same name in the same folder (`lesson.mp3` + `lesson.json`).
+2. Otherwise, a JSON file in the same folder whose `"audio"` field is the audio file's name.
+
+A lesson without a JSON file plays without subtitles.
 
 Example JSON:
 

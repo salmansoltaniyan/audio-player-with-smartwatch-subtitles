@@ -7,14 +7,27 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * Both run in the same process.
  */
 object LessonStore {
-    /** The loaded lesson, or null. Set by MainActivity, read by PlaybackService. */
+    /** All lessons found in the lessons folder. */
+    val library = MutableStateFlow<List<LessonFile>>(emptyList())
+
+    /** The user's playlists. */
+    val playlists = MutableStateFlow<List<Playlist>>(emptyList())
+
+    /** The lessons loaded into the player. Set by MainActivity before it sets the media items. */
+    val queue = MutableStateFlow<PlayQueue?>(null)
+
+    /** The lesson being played. Written by PlaybackService. */
+    val currentFile = MutableStateFlow<LessonFile?>(null)
+
+    /** Timeline of the lesson being played, or null (not loaded yet / no JSON). Written by PlaybackService. */
     val lesson = MutableStateFlow<Lesson?>(null)
 
     /** Index of the segment being shown, -1 if none. Written by PlaybackService. */
     val currentIndex = MutableStateFlow(-1)
 
-    /** Playback position in milliseconds. Written by PlaybackService. */
+    /** Playback position and duration in milliseconds. Written by PlaybackService. */
     val positionMs = MutableStateFlow(0L)
+    val durationMs = MutableStateFlow(0L)
 
     /** Whether a watch was reachable the last time we looked; null = unknown. */
     val watchConnected = MutableStateFlow<Boolean?>(null)
