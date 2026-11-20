@@ -48,6 +48,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var watchStatus: TextView
     private lateinit var playButton: Button
     private lateinit var endModeButton: Button
+    private lateinit var speedButton: Button
     private lateinit var updateButton: Button
     private lateinit var miniBar: View
     private lateinit var miniTitle: TextView
@@ -107,6 +108,7 @@ class MainActivity : AppCompatActivity() {
         watchStatus = findViewById(R.id.watchStatus)
         playButton = findViewById(R.id.playButton)
         endModeButton = findViewById(R.id.endModeButton)
+        speedButton = findViewById(R.id.speedButton)
         updateButton = findViewById(R.id.updateButton)
         miniBar = findViewById(R.id.miniBar)
         miniTitle = findViewById(R.id.miniTitle)
@@ -133,6 +135,8 @@ class MainActivity : AppCompatActivity() {
         miniTitle.setOnClickListener { bottomNav.selectedItemId = R.id.nav_player }
         endModeButton.setOnClickListener { chooseEndMode() }
         refreshEndModeButton()
+        speedButton.setOnClickListener { chooseSpeed() }
+        refreshSpeedButton()
         updateButton.setOnClickListener { checkForUpdate() }
         findViewById<TextView>(R.id.versionText).text = getString(R.string.version, BuildConfig.VERSION_NAME)
         findViewById<MaterialSwitch>(R.id.autoOpenSwitch).apply {
@@ -378,6 +382,23 @@ class MainActivity : AppCompatActivity() {
                 dialog.dismiss()
             }
             .show()
+    }
+
+    private fun chooseSpeed() {
+        val speeds = Prefs.SPEEDS
+        val current = speeds.indexOfFirst { it == Prefs.speed(this) }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.speed_title)
+            .setSingleChoiceItems(speeds.map { Prefs.speedLabel(it) }.toTypedArray(), current) { dialog, which ->
+                Prefs.setSpeed(this, speeds[which]) // the service applies it
+                refreshSpeedButton()
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    private fun refreshSpeedButton() {
+        speedButton.text = getString(R.string.speed_button, Prefs.speedLabel(Prefs.speed(this)))
     }
 
     private fun refreshEndModeButton() {

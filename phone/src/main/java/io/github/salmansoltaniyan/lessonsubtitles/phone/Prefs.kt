@@ -16,6 +16,7 @@ enum class EndMode(val labelRes: Int) {
 object Prefs {
     private const val END_MODE = "end_mode"
     private const val OLD_REPEAT_LESSON = "repeat_lesson" // version 0.1.2
+    private const val SPEED = "speed"
     private const val AUTO_OPEN_WATCH = "auto_open_watch"
     private const val LESSONS_FOLDER = "lessons_folder"
     private const val LAST_QUEUE = "last_queue"
@@ -36,6 +37,18 @@ object Prefs {
         prefs(context).edit().putString(END_MODE, mode.name).apply()
 
     fun isEndModeKey(key: String?) = key == END_MODE
+
+    /** Playback speeds offered to the user. */
+    val SPEEDS = floatArrayOf(0.5f, 0.6f, 0.7f, 0.75f, 0.8f, 0.9f, 1f, 1.1f, 1.25f, 1.5f, 1.75f, 2f)
+
+    /** Playback speed; 1 is normal. The pitch of the voice does not change. */
+    fun speed(context: Context) = prefs(context).getFloat(SPEED, 1f)
+    fun setSpeed(context: Context, speed: Float) = prefs(context).edit().putFloat(SPEED, speed).apply()
+    fun isSpeedKey(key: String?) = key == SPEED
+
+    /** Shows a speed as "0.8×", "1×", "1.25×". */
+    fun speedLabel(speed: Float): String =
+        java.math.BigDecimal(speed.toString()).stripTrailingZeros().toPlainString() + "×"
 
     /** Open the app on the watch when playback starts. */
     fun autoOpenWatch(context: Context) = prefs(context).getBoolean(AUTO_OPEN_WATCH, true)

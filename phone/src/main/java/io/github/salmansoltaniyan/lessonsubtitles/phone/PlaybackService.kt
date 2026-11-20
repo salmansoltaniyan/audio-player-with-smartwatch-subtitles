@@ -70,6 +70,8 @@ class PlaybackService : MediaSessionService() {
     // Kept in a field: SharedPreferences only holds a weak reference to listeners.
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (Prefs.isEndModeKey(key)) applyEndMode()
+        // The subtitle is found from the media position, so it stays in sync at any speed.
+        if (Prefs.isSpeedKey(key)) player.setPlaybackSpeed(Prefs.speed(this))
     }
 
     override fun onCreate() {
@@ -92,6 +94,7 @@ class PlaybackService : MediaSessionService() {
             .build()
 
         applyEndMode()
+        player.setPlaybackSpeed(Prefs.speed(this))
         Prefs.prefs(this).registerOnSharedPreferenceChangeListener(prefsListener)
 
         player.addListener(object : Player.Listener {
