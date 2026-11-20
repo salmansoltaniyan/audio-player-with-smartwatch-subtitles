@@ -4,6 +4,9 @@ CLAUDE.local.md
 .claude/
 watch_app_handoff.md
 
+# ---- Local test lessons (MP3 + JSON) ----
+test_data/
+
 # ---- Signing keys (never push) ----
 *.jks
 *.keystore

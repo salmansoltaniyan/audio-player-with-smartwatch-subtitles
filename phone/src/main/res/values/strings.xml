@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lesson Subtitles</string>
+    <string name="open_lesson">Open lesson (MP3, then JSON)</string>
+    <string name="pick_json_hint">Now choose the JSON file of this lesson</string>
+    <string name="no_lesson">No lesson loaded</string>
+    <string name="json_error">Could not read the JSON file: %1$s</string>
+    <string name="name_mismatch">Warning: this JSON was made for %1$s</string>
+    <string name="previous">Previous</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="next">Next</string>
+    <string name="segment_info">Row %1$d · segment %2$d of %3$d · %4$s</string>
+    <string name="watch_connected">Watch connected</string>
+    <string name="watch_not_connected">No watch connected</string>
+    <string name="watch_unknown">Checking watch…</string>
+    <string name="version">Version %1$s</string>
+    <string name="check_update">Check for update</string>
+    <string name="checking_update">Checking for update…</string>
+    <string name="up_to_date">You have the latest version.</string>
+    <string name="update_error">Update check failed: %1$s</string>
+    <string name="update_available_title">Update available</string>
+    <string name="update_available_message">%1$s is available (you have %2$s). Download and install it?</string>
+    <string name="install">Install</string>
+    <string name="later">Later</string>
+    <string name="downloading">Downloading… %1$d%%</string>
+    <string name="downloading_unknown">Downloading…</string>
+    <string name="allow_installs">Allow this app to install updates, then tap “Check for update” again.</string>
+</resources>

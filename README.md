@@ -58,11 +58,29 @@ A segment is shown from its `start` until the next segment's `start`, including 
 
 The APKs are built by GitHub Actions; Android Studio is not needed.
 
-1. Create a signing keystore once (for example with `keytool`). Never commit it.
-2. In the GitHub repository, open **Settings → Secrets and variables → Actions** and add the keystore
-   (base64-encoded) and its passwords as secrets.
-3. Push to the repository. The workflow builds both signed APKs.
-4. Download the APKs from the run's **Artifacts** section on the **Actions** page.
+1. Create a signing keystore once (for example with `keytool`). Never commit it, and keep a backup:
+   a new key means the apps must be uninstalled and installed again.
+2. In the GitHub repository, open **Settings → Secrets and variables → Actions** and add:
+
+   | Secret              | Value |
+   |---------------------|-------|
+   | `KEYSTORE_BASE64`   | The keystore file, base64-encoded. |
+   | `KEYSTORE_PASSWORD` | The keystore password. |
+   | `KEY_ALIAS`         | The key alias. |
+   | `KEY_PASSWORD`      | The key password. |
+
+3. Push to `main` (or start the workflow by hand on the **Actions** page). The workflow
+   [`.github/workflows/build.yml`](.github/workflows/build.yml) builds both signed APKs.
+4. Every build is published as a GitHub release (tag `build-<number>`) with
+   `lesson-subtitles-phone.apk` and `lesson-subtitles-watch.apk`. The APKs are also on the run's
+   **Artifacts** section on the **Actions** page.
+
+## Updating
+
+- **Phone:** tap **Check for update** in the app. It reads the latest GitHub release, downloads the
+  new APK and opens the Android installer (one tap to confirm). The first time, Android asks you to
+  allow this app to install apps.
+- **Watch:** install the new `lesson-subtitles-watch.apk` the same way as the first time (see below).
 
 Both APKs must be signed with the same key, otherwise the phone and the watch cannot talk to each other.
 
@@ -83,3 +101,4 @@ Both APKs must be signed with the same key, otherwise the phone and the watch ca
 - Remember the last playback position.
 - Open the newest lesson from a fixed folder.
 - Show the row's Persian under the Dutch.
+- Watch update through the phone: the phone downloads the watch APK and sends it to the watch.
