@@ -8,7 +8,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-/** One audio file in the lessons folder, with its JSON timeline if one was found. */
+/**
+ * One audio file in the lessons folder. Its timeline is either inside the file (ID3 tag, see
+ * [Id3Timeline]) or in a JSON file next to it.
+ */
 data class LessonFile(
     /** Path relative to the lessons folder, e.g. "gang11/gang11_output9.mp3". Used as the id. */
     val relPath: String,
@@ -17,8 +20,11 @@ data class LessonFile(
     val folder: String,
     val audioUri: Uri,
     val jsonUri: Uri?,
+    /** The file has a timeline tag inside it. Only checked for files without a JSON file. */
+    val hasTag: Boolean = false,
 ) {
     val title: String get() = fileName.substringBeforeLast('.')
+    val hasTimeline: Boolean get() = hasTag || jsonUri != null
 }
 
 /** The lessons being played, in order. */
@@ -117,12 +123,16 @@ object Library {
         }
 
         for (audio in audios) {
+            val audioUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, audio.id)
+            val json = pairs[audio.id]
             out += LessonFile(
                 relPath = relDir + audio.name,
                 fileName = audio.name,
                 folder = relDir.trimEnd('/'),
-                audioUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, audio.id),
-                jsonUri = pairs[audio.id]?.let { DocumentsContract.buildDocumentUriUsingTree(treeUri, it.id) },
+                audioUri = audioUri,
+                jsonUri = json?.let { DocumentsContract.buildDocumentUriUsingTree(treeUri, it.id) },
+                // Rule 0 (checked when playing, before the JSON): the timeline inside the MP3.
+                hasTag = json == null && Id3Timeline.has(context, audioUri),
             )
         }
 

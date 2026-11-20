@@ -19,7 +19,7 @@
     <string name="last_lesson">This is the last lesson.</string>
     <string name="segment_info">Row %1$d · segment %2$d of %3$d · %4$s</string>
     <string name="queue_info">%1$s · %2$d / %3$d</string>
-    <string name="no_subtitles">No subtitles (JSON not found)</string>
+    <string name="no_subtitles">No subtitles (no timeline in the MP3 and no JSON)</string>
     <string name="player_not_ready">The player is starting, try again.</string>
     <string name="queue_empty">There are no lessons to play.</string>
     <string name="end_mode_title">When a lesson ends</string>

@@ -402,7 +402,7 @@ class MainActivity : AppCompatActivity() {
         val segment = lesson?.segments?.getOrNull(index)
         segmentText.text = when {
             segment != null -> segment.text
-            file != null && file.jsonUri == null -> getString(R.string.no_subtitles)
+            file != null && !file.hasTimeline -> getString(R.string.no_subtitles)
             else -> ""
         }
         segmentText.textDirection =

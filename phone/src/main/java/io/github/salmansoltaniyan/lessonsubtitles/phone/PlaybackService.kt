@@ -163,26 +163,39 @@ class PlaybackService : MediaSessionService() {
 
         val cached = path?.let { timelines[it] }
         LessonStore.lesson.value = cached
-        val jsonUri = file?.jsonUri
-        if (cached != null || jsonUri == null) {
+        if (cached != null || file == null) {
             update()
             return
         }
         timelineJob = scope.launch {
-            val lesson = withContext(Dispatchers.IO) {
-                try {
-                    val text = contentResolver.openInputStream(jsonUri)!!.bufferedReader(Charsets.UTF_8)
-                        .use { it.readText() }
-                    Lesson.parse(file.audioUri, file.title, text)
-                } catch (_: Exception) {
-                    null // broken JSON: play without subtitles
-                }
-            }
+            val lesson = withContext(Dispatchers.IO) { readTimeline(file) }
             if (lesson != null) timelines[file.relPath] = lesson
             if (player.currentMediaItem?.mediaId == file.relPath) {
                 LessonStore.lesson.value = lesson
                 update()
             }
+        }
+    }
+
+    /**
+     * The timeline of [file]: first the tag inside the MP3, then the JSON file next to it.
+     * Null if neither exists or both are broken (the lesson then plays without subtitles).
+     */
+    private fun readTimeline(file: LessonFile): Lesson? {
+        Id3Timeline.read(this, file.audioUri)?.let { json ->
+            try {
+                return Lesson.parse(file.audioUri, file.title, json)
+            } catch (_: Exception) {
+                // broken tag: try the JSON file
+            }
+        }
+        val jsonUri = file.jsonUri ?: return null
+        return try {
+            val text = contentResolver.openInputStream(jsonUri)!!.bufferedReader(Charsets.UTF_8)
+                .use { it.readText() }
+            Lesson.parse(file.audioUri, file.title, text)
+        } catch (_: Exception) {
+            null
         }
     }
 

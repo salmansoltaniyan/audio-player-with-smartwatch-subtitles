@@ -74,7 +74,7 @@ class LibraryAdapter(
                 val file = row.file
                 v.findViewById<TextView>(R.id.lessonName).showLessonName(file.title, file.relPath == playingPath)
                 v.findViewById<TextView>(R.id.lessonNote).apply {
-                    visibility = if (file.jsonUri == null) View.VISIBLE else View.GONE
+                    visibility = if (!file.hasTimeline) View.VISIBLE else View.GONE
                     setText(R.string.no_subtitles)
                 }
                 v.findViewById<CheckBox>(R.id.lessonCheck).apply {
@@ -194,11 +194,11 @@ class PlaylistLessonsAdapter(
                 note.visibility = View.VISIBLE
                 note.text = v.context.getString(R.string.file_not_found, path)
             }
-            file.folder.isNotEmpty() || file.jsonUri == null -> {
+            file.folder.isNotEmpty() || !file.hasTimeline -> {
                 note.visibility = View.VISIBLE
                 note.text = listOfNotNull(
                     file.folder.ifEmpty { null },
-                    if (file.jsonUri == null) v.context.getString(R.string.no_subtitles) else null,
+                    if (!file.hasTimeline) v.context.getString(R.string.no_subtitles) else null,
                 ).joinToString(" · ")
             }
             else -> note.visibility = View.GONE

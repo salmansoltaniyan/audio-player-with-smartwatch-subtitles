@@ -60,12 +60,16 @@ A lesson that was moved or deleted is shown as "Not found" in the playlist and s
 
 ## Lesson files
 
-Each lesson is an audio file (usually MP3) with a JSON timeline. The app pairs them like this:
+Each lesson is an audio file (usually MP3) with a JSON timeline. The app looks for the timeline in
+this order:
 
-1. A JSON file with the same name in the same folder (`lesson.mp3` + `lesson.json`).
-2. Otherwise, a JSON file in the same folder whose `"audio"` field is the audio file's name.
+1. **Inside the MP3:** an ID3v2.3/2.4 tag with a `TXXX` frame whose description is
+   `SHADOWING_TIMELINE`; its value is the JSON on one line (UTF-8). No other file is needed.
+2. A JSON file with the same name in the same folder (`lesson.mp3` + `lesson.json`).
+3. A JSON file in the same folder whose `"audio"` field is the audio file's name.
 
-A lesson without a JSON file plays without subtitles.
+A lesson without any timeline plays without subtitles. To check the tag on a computer:
+`ffprobe -v error -show_entries format_tags=SHADOWING_TIMELINE -of default=nw=1:nk=1 lesson.mp3`
 
 Example JSON:
 
@@ -87,7 +91,7 @@ Example JSON:
 | `end`        | End of the segment; equal to the next segment's `start`. |
 | `row`        | Line number in the lesson (one exercise). |
 | `tag`        | Speaker tag. |
-| `lang`       | `dutch` or `persian`; sets text direction and font. |
+| `lang`       | `dutch`, `persian`, `english` or `german`; Persian is shown right-to-left. |
 | `text`       | The text to show. |
 
 A segment is shown from its `start` until the next segment's `start`, including the pause.
@@ -139,6 +143,5 @@ Both APKs must be signed with the same key, otherwise the phone and the watch ca
 ## Ideas for later
 
 - Setting for text size.
-- Remember the last playback position.
 - Open the newest lesson from a fixed folder.
 - Show the row's Persian under the Dutch.
