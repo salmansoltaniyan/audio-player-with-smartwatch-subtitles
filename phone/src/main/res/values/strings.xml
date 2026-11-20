@@ -28,6 +28,7 @@
     <string name="end_mode_repeat">Repeat the lesson</string>
     <string name="end_mode_next">Play the next lesson</string>
     <string name="end_mode_loop">Next lesson, start again after the last</string>
+    <string name="continuing_at">Continuing at %1$s · drag the bar to start again</string>
     <string name="speed_title">Playback speed</string>
     <string name="speed_button">Speed: %1$s</string>
     <string name="auto_open_watch">Open the app on the watch when playing</string>

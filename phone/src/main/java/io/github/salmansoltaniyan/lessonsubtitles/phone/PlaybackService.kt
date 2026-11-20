@@ -47,12 +47,21 @@ class PlaybackService : MediaSessionService() {
     private var lastAutoOpenMs = 0L
     private var lastSaveMs = 0L
 
+    /** The lesson that was playing before the last media item transition. */
+    private var previousPath: String? = null
+
+    /** Lesson and position at the last tick while playing; saved when the user switches lesson. */
+    private var tickPath: String? = null
+    private var tickPositionMs = 0L
+
     /** Parsed timelines by lesson path; cleared when a new queue is loaded. */
     private val timelines = HashMap<String, Lesson>()
     private var timelineJob: Job? = null
 
     private val tick = object : Runnable {
         override fun run() {
+            tickPath = player.currentMediaItem?.mediaId
+            tickPositionMs = player.currentPosition
             update()
             if (player.isPlaying) handler.postDelayed(this, TICK_MS)
         }
@@ -112,12 +121,33 @@ class PlaybackService : MediaSessionService() {
 
             override fun onTimelineChanged(timeline: Timeline, reason: Int) {
                 if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) {
+                    previousPath = player.currentMediaItem?.mediaId
                     timelines.clear() // a new queue: JSON files may have changed
                     loadTimeline()
                 }
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // The previous lesson was played to its end: next time it starts from the beginning.
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
+                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
+                ) {
+                    previousPath?.let { Prefs.setLessonPosition(this@PlaybackService, it, 0) }
+                } else if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK &&
+                    previousPath != null && previousPath == tickPath
+                ) {
+                    // The user switched lesson while playing: remember where they were.
+                    Prefs.setLessonPosition(this@PlaybackService, previousPath!!, tickPositionMs)
+                }
+                // Lesson buttons or the next lesson in the queue: continue where the user stopped in it.
+                val path = mediaItem?.mediaId
+                if (path != null && reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
+                    reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED
+                ) {
+                    val resumeMs = Prefs.lessonPosition(this@PlaybackService, path)
+                    if (resumeMs > 0) player.seekTo(resumeMs)
+                }
+                previousPath = path
                 loadTimeline()
                 savePosition()
             }
@@ -228,7 +258,12 @@ class PlaybackService : MediaSessionService() {
         lastSaveMs = SystemClock.elapsedRealtime()
         val queue = LessonStore.queue.value ?: return
         val path = player.currentMediaItem?.mediaId ?: return
-        Prefs.setLastPlayed(this, Prefs.LastPlayed(queue.id, path, player.currentPosition))
+        var positionMs = player.currentPosition
+        val durationMs = player.duration
+        // Stopped at the very end: next time start from the beginning.
+        if (durationMs != C.TIME_UNSET && positionMs >= durationMs - FINISHED_MARGIN_MS) positionMs = 0
+        Prefs.setLastPlayed(this, Prefs.LastPlayed(queue.id, path, positionMs))
+        Prefs.setLessonPosition(this, path, positionMs)
     }
 
     private fun sendCurrent() {
@@ -294,5 +329,6 @@ class PlaybackService : MediaSessionService() {
         const val TICK_MS = 100L
         const val SAVE_EVERY_MS = 5_000L
         const val AUTO_OPEN_COOLDOWN_MS = 30_000L
+        const val FINISHED_MARGIN_MS = 2_000L
     }
 }

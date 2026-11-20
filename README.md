@@ -42,7 +42,10 @@ all its sub folders are scanned for audio files, sorted by name (`gang9` comes b
   what happens when a lesson ends: stop, repeat the lesson, play the next lesson, or play the next
   lesson and start again after the last one. "Speed" plays slower or faster (0.5× to 2×) without
   changing the pitch; the text on the phone and the watch stays in sync.
-- The app remembers the last playlist, lesson and position.
+- Every lesson remembers where you stopped and continues there next time (also after closing the
+  app); a lesson that was played to the end starts again from the beginning. Drag the bar on the
+  Player tab to go to any point, for example back to the start.
+- When the app opens, the last lesson is loaded (paused) at its position.
 
 Playlists are saved in the lessons folder, in `playlists/<name>.json`, so they survive a reinstall and
 can be edited on a computer. Lesson paths are relative to the lessons folder:

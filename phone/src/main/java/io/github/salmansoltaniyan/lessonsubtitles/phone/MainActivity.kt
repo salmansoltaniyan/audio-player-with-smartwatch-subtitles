@@ -14,6 +14,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.addCallback
@@ -45,6 +46,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var segmentText: TextView
     private lateinit var segmentInfo: TextView
     private lateinit var timeText: TextView
+    private lateinit var seekBar: SeekBar
+    private var seeking = false
     private lateinit var watchStatus: TextView
     private lateinit var playButton: Button
     private lateinit var endModeButton: Button
@@ -105,6 +108,21 @@ class MainActivity : AppCompatActivity() {
         segmentText = findViewById(R.id.segmentText)
         segmentInfo = findViewById(R.id.segmentInfo)
         timeText = findViewById(R.id.timeText)
+        seekBar = findViewById(R.id.seekBar)
+        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
+                if (fromUser) timeText.text = timeLabel(progress.toLong(), LessonStore.durationMs.value)
+            }
+
+            override fun onStartTrackingTouch(bar: SeekBar) {
+                seeking = true
+            }
+
+            override fun onStopTrackingTouch(bar: SeekBar) {
+                seeking = false
+                controller?.seekTo(bar.progress.toLong())
+            }
+        })
         watchStatus = findViewById(R.id.watchStatus)
         playButton = findViewById(R.id.playButton)
         endModeButton = findViewById(R.id.endModeButton)
@@ -272,8 +290,11 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    /** Loads [queue] into the player and starts at [startPath] (or the first lesson). */
-    fun playQueue(queue: PlayQueue, startPath: String?, positionMs: Long = 0, autoPlay: Boolean = true) {
+    /**
+     * Loads [queue] into the player and starts at [startPath] (or the first lesson), at [positionMs]
+     * or, when null, where the user stopped in that lesson last time.
+     */
+    fun playQueue(queue: PlayQueue, startPath: String?, positionMs: Long? = null, autoPlay: Boolean = true) {
         val c = controller
         if (c == null) {
             toast(getString(R.string.player_not_ready))
@@ -284,9 +305,22 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val start = queue.items.indexOfFirst { it.relPath == startPath }.coerceAtLeast(0)
-        LessonStore.queue.value = queue // before the media items: the service reads it
-        c.setMediaItems(queue.items.map(::mediaItemFor), start, positionMs)
-        c.prepare()
+        val startFile = queue.items[start]
+        val sameLesson = LessonStore.queue.value?.id == queue.id &&
+            c.currentMediaItem?.mediaId == startFile.relPath && c.mediaItemCount == queue.items.size
+        if (sameLesson && positionMs == null) {
+            // The lesson is already loaded (for example restored at start): just continue it.
+            LessonStore.queue.value = queue
+        } else {
+            val resumeMs = positionMs ?: Prefs.lessonPosition(this, startFile.relPath)
+            if (positionMs == null && resumeMs > 0) {
+                toast(getString(R.string.continuing_at, formatTime(resumeMs / 1000)))
+            }
+            LessonStore.queue.value = queue // before the media items: the service reads it
+            c.setMediaItems(queue.items.map(::mediaItemFor), start, resumeMs)
+        }
+        if (c.playbackState == Player.STATE_IDLE) c.prepare()
+        if (c.playbackState == Player.STATE_ENDED) c.seekTo(0)
         if (autoPlay) {
             c.play()
             bottomNav.selectedItemId = R.id.nav_player
@@ -439,9 +473,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun showTime() {
         val duration = LessonStore.durationMs.value
-        timeText.text = if (LessonStore.currentFile.value == null) "" else
-            "${formatTime(LessonStore.positionMs.value / 1000)} / ${formatTime(duration / 1000)}"
+        val hasLesson = LessonStore.currentFile.value != null
+        seekBar.isEnabled = hasLesson && duration > 0
+        if (seeking) return
+        timeText.text = if (!hasLesson) "" else timeLabel(LessonStore.positionMs.value, duration)
+        seekBar.max = duration.coerceIn(1, Int.MAX_VALUE.toLong()).toInt()
+        seekBar.progress = LessonStore.positionMs.value.coerceIn(0, seekBar.max.toLong()).toInt()
     }
+
+    private fun timeLabel(positionMs: Long, durationMs: Long) =
+        "${formatTime(positionMs / 1000)} / ${formatTime(durationMs / 1000)}"
 
     private fun formatTime(totalSec: Long): String = "%d:%02d".format(totalSec / 60, totalSec % 60)
 

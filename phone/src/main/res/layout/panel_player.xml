@@ -51,6 +51,13 @@
         android:gravity="center"
         android:textAppearance="?attr/textAppearanceBodyLarge" />
 
+    <SeekBar
+        android:id="@+id/seekBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:paddingVertical="8dp" />
+
     <!-- Segment controls -->
     <LinearLayout
         android:layout_width="match_parent"

@@ -61,6 +61,20 @@ object Prefs {
     fun setLessonsFolder(context: Context, uri: Uri) =
         prefs(context).edit().putString(LESSONS_FOLDER, uri.toString()).apply()
 
+    // ---- Position of each lesson, to continue where the user stopped ----
+
+    private fun positions(context: Context): SharedPreferences =
+        context.applicationContext.getSharedPreferences("positions", Context.MODE_PRIVATE)
+
+    /** Where the user stopped in the lesson at [path] (0 if never played or finished). */
+    fun lessonPosition(context: Context, path: String): Long = positions(context).getLong(path, 0)
+
+    fun setLessonPosition(context: Context, path: String, positionMs: Long) {
+        val edit = positions(context).edit()
+        if (positionMs > 0) edit.putLong(path, positionMs) else edit.remove(path)
+        edit.apply()
+    }
+
     /** Where the user was: queue id (see PlayQueue.id), lesson path and position. */
     data class LastPlayed(val queueId: String, val lessonPath: String, val positionMs: Long)
 
