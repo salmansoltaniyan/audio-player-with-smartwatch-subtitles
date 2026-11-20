@@ -18,4 +18,10 @@ object LessonStore {
 
     /** Whether a watch was reachable the last time we looked; null = unknown. */
     val watchConnected = MutableStateFlow<Boolean?>(null)
+
+    /** Whether the watch app is open on the watch screen (reported by the watch). */
+    val watchVisible = MutableStateFlow(false)
+
+    /** versionCode of the watch app, once the watch has reported it. */
+    val watchVersion = MutableStateFlow<Int?>(null)
 }

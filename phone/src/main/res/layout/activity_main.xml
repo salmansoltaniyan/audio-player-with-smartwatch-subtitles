@@ -83,6 +83,19 @@
                 android:text="@string/next" />
         </LinearLayout>
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/repeatSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/repeat_lesson" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/autoOpenSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/auto_open_watch" />
+
         <TextView
             android:id="@+id/watchStatus"
             android:layout_width="match_parent"

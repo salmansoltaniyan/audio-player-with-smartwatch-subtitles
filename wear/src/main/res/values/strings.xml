@@ -3,5 +3,9 @@
     <string name="app_name">Lesson Subtitles</string>
     <string name="waiting">Open a lesson on the phone</string>
     <string name="paused">Paused</string>
-    <string name="empty" translatable="false"></string>
+    <string name="previous">Previous segment</string>
+    <string name="repeat">Repeat segment</string>
+    <string name="next">Next segment</string>
+    <string name="receiving_update">Receiving update…</string>
+    <string name="installing_update">Installing update…</string>
 </resources>

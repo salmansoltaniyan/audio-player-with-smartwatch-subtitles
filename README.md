@@ -14,11 +14,20 @@ The project has two apps in one Gradle project:
 
 | Module  | Runs on              | What it does |
 |---------|----------------------|--------------|
-| `phone` | Android phone        | Plays an MP3 lesson with its JSON timeline. Play / Pause / previous segment / next segment. Keeps playing with the screen off. Sends the current segment's text to the watch and shows it on the phone. |
-| `wear`  | Wear OS watch        | Shows the received text in large letters and keeps the screen on while a lesson plays. Planned: Pause and "repeat segment" buttons that control the phone. |
+| `phone` | Android phone        | Plays an MP3 lesson with its JSON timeline. Play / Pause / previous segment / next segment. Keeps playing with the screen off. Optional: repeat the lesson when it ends, open the watch app when playback starts. Sends the current segment's text to the watch and shows it on the phone. |
+| `wear`  | Wear OS watch        | Shows the received text in large letters and keeps the screen on while a lesson plays. Controls the phone (see below). |
 
-The phone and the watch talk through the Wearable Data Layer API (`MessageClient`). For this to work, both
-apps use the same `applicationId` and are signed with the same key.
+Watch controls:
+
+| Control                     | Action |
+|-----------------------------|--------|
+| ⟲ (middle button)           | Play the current segment again from its start. |
+| ⏮ / ⏭                       | Play the previous / next segment. |
+| Tap the text                | Play / pause. |
+| Touch bezel (Galaxy Watch)  | Clockwise: next segment. Counter-clockwise: previous segment. |
+
+The phone and the watch talk through the Wearable Data Layer API (`MessageClient`, `ChannelClient`).
+For this to work, both apps use the same `applicationId` and are signed with the same key.
 
 ## Lesson files
 
@@ -80,7 +89,10 @@ The APKs are built by GitHub Actions; Android Studio is not needed.
 - **Phone:** tap **Check for update** in the app. It reads the latest GitHub release, downloads the
   new APK and opens the Android installer (one tap to confirm). The first time, Android asks you to
   allow this app to install apps.
-- **Watch:** install the new `lesson-subtitles-watch.apk` the same way as the first time (see below).
+- **Watch:** in the same dialog, tap **Update watch**. The phone opens the watch app, downloads the
+  watch APK and sends it to the watch, which asks you to confirm. The first time, the watch asks you to
+  allow this app to install apps. Watch apps older than 0.1.2 cannot receive updates yet and must be
+  installed by hand once (see below).
 
 Both APKs must be signed with the same key, otherwise the phone and the watch cannot talk to each other.
 
@@ -101,4 +113,3 @@ Both APKs must be signed with the same key, otherwise the phone and the watch ca
 - Remember the last playback position.
 - Open the newest lesson from a fixed folder.
 - Show the row's Persian under the Dutch.
-- Watch update through the phone: the phone downloads the watch APK and sends it to the watch.

@@ -3,6 +3,7 @@ package io.github.salmansoltaniyan.lessonsubtitles.phone
 import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -13,6 +14,7 @@ import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -23,14 +25,15 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import com.google.android.gms.wearable.Wearable
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 class MainActivity : AppCompatActivity() {
 
@@ -85,20 +88,31 @@ class MainActivity : AppCompatActivity() {
         timeText = findViewById(R.id.timeText)
         watchStatus = findViewById(R.id.watchStatus)
         playButton = findViewById(R.id.playButton)
+        updateButton = findViewById(R.id.updateButton)
 
         findViewById<Button>(R.id.openButton).setOnClickListener { pickAudio.launch(arrayOf("audio/*")) }
         findViewById<Button>(R.id.prevButton).setOnClickListener { previousSegment() }
         findViewById<Button>(R.id.nextButton).setOnClickListener { nextSegment() }
         playButton.setOnClickListener { togglePlay() }
-
-        findViewById<TextView>(R.id.versionText).text = getString(R.string.version, BuildConfig.VERSION_NAME)
-        updateButton = findViewById(R.id.updateButton)
         updateButton.setOnClickListener { checkForUpdate() }
+        findViewById<TextView>(R.id.versionText).text = getString(R.string.version, BuildConfig.VERSION_NAME)
+
+        findViewById<MaterialSwitch>(R.id.repeatSwitch).apply {
+            isChecked = Prefs.repeatLesson(this@MainActivity)
+            setOnCheckedChangeListener { _, checked ->
+                Prefs.setRepeatLesson(this@MainActivity, checked)
+                controller?.repeatMode = repeatModeFor(checked)
+            }
+        }
+        findViewById<MaterialSwitch>(R.id.autoOpenSwitch).apply {
+            isChecked = Prefs.autoOpenWatch(this@MainActivity)
+            setOnCheckedChangeListener { _, checked -> Prefs.setAutoOpenWatch(this@MainActivity, checked) }
+        }
 
         // Android 13+: the playback notification needs this permission to be visible.
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
-            android.content.pm.PackageManager.PERMISSION_GRANTED
+            PackageManager.PERMISSION_GRANTED
         ) {
             askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -136,13 +150,14 @@ class MainActivity : AppCompatActivity() {
         future.addListener({
             val c = controller ?: return@addListener
             c.addListener(playerListener)
+            c.repeatMode = repeatModeFor(Prefs.repeatLesson(this))
             // A lesson was picked before the controller was ready.
             val lesson = LessonStore.lesson.value
             if (lesson != null && c.mediaItemCount == 0) setMedia(c, lesson)
             refreshPlayButton()
         }, ContextCompat.getMainExecutor(this))
 
-        checkWatch()
+        lifecycleScope.launch { WatchLink.connectedNodes(this@MainActivity) }
     }
 
     override fun onStop() {
@@ -150,6 +165,9 @@ class MainActivity : AppCompatActivity() {
         controllerFuture = null
         super.onStop()
     }
+
+    private fun repeatModeFor(repeat: Boolean) =
+        if (repeat) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
 
     // ---- Loading a lesson ----
 
@@ -162,20 +180,12 @@ class MainActivity : AppCompatActivity() {
                     Lesson.parse(audio, displayName(audio), text)
                 }
             } catch (e: Exception) {
-                Toast.makeText(
-                    this@MainActivity,
-                    getString(R.string.json_error, e.message ?: e.javaClass.simpleName),
-                    Toast.LENGTH_LONG,
-                ).show()
+                toast(getString(R.string.json_error, e.message ?: e.javaClass.simpleName))
                 return@launch
             }
 
             if (lesson.audioNameInJson.isNotEmpty() && lesson.audioNameInJson != lesson.title) {
-                Toast.makeText(
-                    this@MainActivity,
-                    getString(R.string.name_mismatch, lesson.audioNameInJson),
-                    Toast.LENGTH_LONG,
-                ).show()
+                toast(getString(R.string.name_mismatch, lesson.audioNameInJson))
             }
 
             LessonStore.lesson.value = lesson
@@ -207,7 +217,7 @@ class MainActivity : AppCompatActivity() {
             ?: uri.lastPathSegment
             ?: "lesson"
 
-    // ---- Buttons ----
+    // ---- Player buttons ----
 
     private fun togglePlay() {
         val c = controller ?: return
@@ -271,89 +281,134 @@ class MainActivity : AppCompatActivity() {
 
     private fun formatTime(totalSec: Long): String = "%d:%02d".format(totalSec / 60, totalSec % 60)
 
-    // ---- Update from GitHub releases ----
+    // ---- Updates from GitHub releases ----
 
     private fun checkForUpdate() {
         updateButton.isEnabled = false
-        Toast.makeText(this, R.string.checking_update, Toast.LENGTH_SHORT).show()
+        toast(getString(R.string.checking_update))
         lifecycleScope.launch {
             try {
-                val update = Updater.findUpdate()
-                if (update == null) {
-                    Toast.makeText(this@MainActivity, R.string.up_to_date, Toast.LENGTH_SHORT).show()
+                val release = Updater.latestRelease()
+                if (release == null) {
+                    toast(getString(R.string.up_to_date))
+                    return@launch
+                }
+                val watchConnected = WatchLink.connectedNodes(this@MainActivity).isNotEmpty()
+                val watchVersion = LessonStore.watchVersion.value
+                val phoneNeeds = release.phoneApkUrl != null && release.versionCode > BuildConfig.VERSION_CODE
+                // An unknown watch version (watch app closed, or too old to report it) may need an update.
+                val watchMayNeed = watchConnected && release.watchApkUrl != null &&
+                    (watchVersion == null || watchVersion < release.versionCode)
+
+                if (!phoneNeeds && !watchMayNeed) {
+                    toast(getString(R.string.up_to_date))
                 } else {
-                    askToInstall(update)
+                    askToUpdate(release, phoneNeeds, watchMayNeed, watchVersion)
                 }
             } catch (e: Exception) {
-                Toast.makeText(
-                    this@MainActivity,
-                    getString(R.string.update_error, e.message ?: e.javaClass.simpleName),
-                    Toast.LENGTH_LONG,
-                ).show()
+                toast(getString(R.string.update_error, e.message ?: e.javaClass.simpleName))
             } finally {
                 updateButton.isEnabled = true
             }
         }
     }
 
-    private fun askToInstall(update: UpdateInfo) {
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.update_available_title)
-            .setMessage(getString(R.string.update_available_message, update.title, BuildConfig.VERSION_NAME))
-            .setPositiveButton(R.string.install) { _, _ -> downloadAndInstall(update) }
+    private fun askToUpdate(release: Release, phoneNeeds: Boolean, watchMayNeed: Boolean, watchVersion: Int?) {
+        val phoneLine = getString(
+            if (phoneNeeds) R.string.update_line_phone_new else R.string.update_line_phone_ok,
+            BuildConfig.VERSION_NAME,
+        )
+        val watchLine = when {
+            !watchMayNeed -> getString(R.string.update_line_watch_ok)
+            watchVersion == null -> getString(R.string.update_line_watch_unknown)
+            else -> getString(R.string.update_line_watch_new, "0.1.$watchVersion")
+        }
+        val builder = MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.update_title, release.title))
+            .setMessage("$phoneLine\n$watchLine")
             .setNegativeButton(R.string.later, null)
-            .show()
+        // Update the watch first: installing the phone app closes this app.
+        if (watchMayNeed) builder.setPositiveButton(R.string.update_watch) { _, _ -> updateWatch(release) }
+        if (phoneNeeds) {
+            if (watchMayNeed) {
+                builder.setNeutralButton(R.string.update_phone) { _, _ -> updatePhone(release) }
+            } else {
+                builder.setPositiveButton(R.string.update_phone) { _, _ -> updatePhone(release) }
+            }
+        }
+        builder.show()
     }
 
-    private fun downloadAndInstall(update: UpdateInfo) {
+    private fun updatePhone(release: Release) {
+        val url = release.phoneApkUrl ?: return
         // Android asks once per app: "Allow installing apps from this source?"
-        if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
-            Toast.makeText(this, R.string.allow_installs, Toast.LENGTH_LONG).show()
-            startActivity(
-                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
-            )
+        if (!packageManager.canRequestPackageInstalls()) {
+            toast(getString(R.string.allow_installs))
+            startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
             return
         }
-
-        val progress = MaterialAlertDialogBuilder(this)
-            .setMessage(R.string.downloading_unknown)
-            .setCancelable(false)
-            .show()
-        updateButton.isEnabled = false
+        val progress = progressDialog(getString(R.string.downloading_unknown))
         lifecycleScope.launch {
             try {
-                val apk = Updater.download(this@MainActivity, update) { percent ->
-                    progress.setMessage(
-                        if (percent >= 0) getString(R.string.downloading, percent)
-                        else getString(R.string.downloading_unknown)
-                    )
+                val apk = Updater.download(this@MainActivity, url, "phone.apk") { percent ->
+                    progress.setMessage(downloadMessage(percent))
                 }
                 progress.dismiss()
                 Updater.install(this@MainActivity, apk)
             } catch (e: Exception) {
                 progress.dismiss()
-                Toast.makeText(
-                    this@MainActivity,
-                    getString(R.string.update_error, e.message ?: e.javaClass.simpleName),
-                    Toast.LENGTH_LONG,
-                ).show()
-            } finally {
-                updateButton.isEnabled = true
+                toast(getString(R.string.update_error, e.message ?: e.javaClass.simpleName))
             }
         }
     }
 
-    private fun checkWatch() {
+    private fun updateWatch(release: Release) {
+        val url = release.watchApkUrl ?: return
+        val progress = progressDialog(getString(R.string.opening_watch_app))
         lifecycleScope.launch {
-            LessonStore.watchConnected.value = try {
-                Wearable.getNodeClient(this@MainActivity).connectedNodes.await().isNotEmpty()
-            } catch (_: Exception) {
-                false
+            try {
+                // The watch app must be open to receive the file.
+                WatchLink.openAppOnWatch(this@MainActivity)
+                val opened = withTimeoutOrNull(WATCH_OPEN_TIMEOUT_MS) {
+                    LessonStore.watchVisible.first { it }
+                }
+                if (opened == null) {
+                    progress.dismiss()
+                    toast(getString(R.string.watch_app_not_open))
+                    return@launch
+                }
+                val watchVersion = LessonStore.watchVersion.value
+                if (watchVersion != null && watchVersion >= release.versionCode) {
+                    progress.dismiss()
+                    toast(getString(R.string.watch_up_to_date))
+                    return@launch
+                }
+
+                val apk = Updater.download(this@MainActivity, url, "watch.apk") { percent ->
+                    progress.setMessage(downloadMessage(percent))
+                }
+                WatchLink.sendApk(this@MainActivity, apk) { percent ->
+                    progress.setMessage(getString(R.string.sending_to_watch, percent))
+                }
+                progress.dismiss()
+                toast(getString(R.string.confirm_on_watch))
+            } catch (e: Exception) {
+                progress.dismiss()
+                toast(getString(R.string.update_error, e.message ?: e.javaClass.simpleName))
             }
         }
     }
+
+    private fun progressDialog(message: String): AlertDialog =
+        MaterialAlertDialogBuilder(this).setMessage(message).setCancelable(false).show()
+
+    private fun downloadMessage(percent: Int) =
+        if (percent >= 0) getString(R.string.downloading, percent) else getString(R.string.downloading_unknown)
+
+    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 
     private companion object {
         const val RESTART_WINDOW_SEC = 1.5
+        const val WATCH_OPEN_TIMEOUT_MS = 20_000L
     }
 }

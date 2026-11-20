@@ -11,82 +11,90 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** A newer phone APK published as a GitHub release. */
-data class UpdateInfo(val versionCode: Int, val title: String, val apkUrl: String)
+/** The newest GitHub release. The workflow makes one release per build, tagged "build-<versionCode>". */
+data class Release(
+    val versionCode: Int,
+    val title: String,
+    val phoneApkUrl: String?,
+    val watchApkUrl: String?,
+)
 
-/**
- * Checks the GitHub releases of this project for a newer phone APK, downloads it and opens
- * the Android installer. The workflow makes one release per build, tagged "build-<versionCode>".
- */
+/** Reads GitHub releases, downloads APKs and opens the Android installer for the phone APK. */
 object Updater {
     private const val LATEST_RELEASE_URL =
         "https://api.github.com/repos/salmansoltaniyan/audio-player-with-smartwatch-subtitles/releases/latest"
     private const val TAG_PREFIX = "build-"
     private const val PHONE_ASSET = "lesson-subtitles-phone.apk"
+    private const val WATCH_ASSET = "lesson-subtitles-watch.apk"
 
-    /** Returns the latest release if it is newer than this app, otherwise null. */
-    suspend fun findUpdate(): UpdateInfo? = withContext(Dispatchers.IO) {
+    /** The latest release, or null if there is none yet. */
+    suspend fun latestRelease(): Release? = withContext(Dispatchers.IO) {
         val conn = open(LATEST_RELEASE_URL)
         try {
             conn.setRequestProperty("Accept", "application/vnd.github+json")
             when (conn.responseCode) {
                 HttpURLConnection.HTTP_OK -> Unit
-                HttpURLConnection.HTTP_NOT_FOUND -> return@withContext null // no release yet
+                HttpURLConnection.HTTP_NOT_FOUND -> return@withContext null
                 else -> throw IOException("GitHub answered ${conn.responseCode}")
             }
             val release = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
             val versionCode = release.getString("tag_name").removePrefix(TAG_PREFIX).toIntOrNull()
                 ?: return@withContext null
-            if (versionCode <= BuildConfig.VERSION_CODE) return@withContext null
-
             val assets = release.getJSONArray("assets")
-            val apkUrl = (0 until assets.length())
+            val urls = (0 until assets.length())
                 .map { assets.getJSONObject(it) }
-                .firstOrNull { it.getString("name") == PHONE_ASSET }
-                ?.getString("browser_download_url")
-                ?: return@withContext null
-            UpdateInfo(versionCode, release.optString("name", "build $versionCode"), apkUrl)
+                .associate { it.getString("name") to it.getString("browser_download_url") }
+            Release(
+                versionCode = versionCode,
+                title = release.optString("name", "build $versionCode"),
+                phoneApkUrl = urls[PHONE_ASSET],
+                watchApkUrl = urls[WATCH_ASSET],
+            )
         } finally {
             conn.disconnect()
         }
     }
 
-    /** Downloads the APK into the app's cache. [onProgress] gets 0..100, or -1 if the size is unknown. */
-    suspend fun download(context: Context, update: UpdateInfo, onProgress: (Int) -> Unit): File =
-        withContext(Dispatchers.IO) {
-            val dir = File(context.cacheDir, "updates").apply { mkdirs() }
-            dir.listFiles()?.forEach { it.delete() }
-            val file = File(dir, "update-${update.versionCode}.apk")
+    /** Downloads [url] into the app's cache as [fileName]. [onProgress] gets 0..100, or -1 if unknown. */
+    suspend fun download(
+        context: Context,
+        url: String,
+        fileName: String,
+        onProgress: (Int) -> Unit,
+    ): File = withContext(Dispatchers.IO) {
+        val dir = File(context.cacheDir, "updates").apply { mkdirs() }
+        val file = File(dir, fileName)
+        file.delete()
 
-            val conn = open(update.apkUrl) // GitHub redirects to its file server; followed automatically
-            try {
-                if (conn.responseCode != HttpURLConnection.HTTP_OK) {
-                    throw IOException("Download failed: HTTP ${conn.responseCode}")
-                }
-                val total = conn.contentLengthLong
-                conn.inputStream.use { input ->
-                    file.outputStream().use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        var done = 0L
-                        var lastPercent = -2
-                        while (true) {
-                            val n = input.read(buffer)
-                            if (n < 0) break
-                            output.write(buffer, 0, n)
-                            done += n
-                            val percent = if (total > 0) (done * 100 / total).toInt() else -1
-                            if (percent != lastPercent) {
-                                lastPercent = percent
-                                withContext(Dispatchers.Main) { onProgress(percent) }
-                            }
+        val conn = open(url) // GitHub redirects to its file server; followed automatically
+        try {
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                throw IOException("Download failed: HTTP ${conn.responseCode}")
+            }
+            val total = conn.contentLengthLong
+            conn.inputStream.use { input ->
+                file.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var done = 0L
+                    var lastPercent = -2
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        output.write(buffer, 0, n)
+                        done += n
+                        val percent = if (total > 0) (done * 100 / total).toInt() else -1
+                        if (percent != lastPercent) {
+                            lastPercent = percent
+                            withContext(Dispatchers.Main) { onProgress(percent) }
                         }
                     }
                 }
-            } finally {
-                conn.disconnect()
             }
-            file
+        } finally {
+            conn.disconnect()
         }
+        file
+    }
 
     /** Opens the system installer for [apk]. Android asks the user to confirm. */
     fun install(context: Context, apk: File) {
