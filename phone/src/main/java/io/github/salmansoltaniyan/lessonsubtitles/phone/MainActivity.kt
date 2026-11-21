@@ -334,24 +334,25 @@ class MainActivity : AppCompatActivity() {
         .build()
 
     /** When the app starts with an empty player, goes back to where the user was (paused). */
-    private fun restoreLastPlayed() {
-        if (restoreDone) return
-        val c = controller ?: return
-        if (c.mediaItemCount > 0 || LessonStore.queue.value != null) {
+    private fun restoreLastPlayed(autoPlay: Boolean = false): Boolean {
+        if (restoreDone) return false
+        val c = controller ?: return false
+        if (c.mediaItemCount > 0) {
             restoreDone = true // the player is already playing something
-            return
+            return false
         }
-        if (LessonStore.library.value.isEmpty()) return // not scanned yet
+        if (LessonStore.library.value.isEmpty()) return false // not scanned yet
         restoreDone = true
-        val last = Prefs.lastPlayed(this) ?: return
+        val last = Prefs.lastPlayed(this) ?: return false
         val queue = when {
             last.queueId.startsWith("playlist:") -> LessonStore.playlists.value
                 .firstOrNull { "playlist:${it.name}" == last.queueId }?.let(::playlistQueue)
             last.queueId.startsWith("folder:") -> folderQueue(last.queueId.removePrefix("folder:"))
             else -> null
-        } ?: return
-        if (queue.items.none { it.relPath == last.lessonPath }) return
-        playQueue(queue, last.lessonPath, last.positionMs, autoPlay = false)
+        } ?: return false
+        if (queue.items.none { it.relPath == last.lessonPath }) return false
+        playQueue(queue, last.lessonPath, last.positionMs, autoPlay)
+        return true
     }
 
     // ---- Player buttons ----
@@ -359,7 +360,9 @@ class MainActivity : AppCompatActivity() {
     private fun togglePlay() {
         val c = controller ?: return
         if (c.mediaItemCount == 0) {
-            toast(getString(R.string.no_lesson_hint))
+            // The player was stopped (for example the app was closed): load the last lesson again.
+            restoreDone = false
+            if (!restoreLastPlayed(autoPlay = true)) toast(getString(R.string.no_lesson_hint))
             return
         }
         if (c.isPlaying) {

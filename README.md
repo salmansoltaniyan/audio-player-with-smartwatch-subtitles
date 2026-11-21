@@ -26,6 +26,9 @@ Watch controls:
 | Tap the text                | Play / pause. |
 | Touch bezel (Galaxy Watch)  | Clockwise: next segment. Counter-clockwise: previous segment. |
 
+To open the watch app from the watch face, add the "Lesson Subtitles" complication to a slot of the
+watch face (long-press the watch face → Customize → Complications).
+
 The phone and the watch talk through the Wearable Data Layer API (`MessageClient`, `ChannelClient`).
 For this to work, both apps use the same `applicationId` and are signed with the same key.
 
