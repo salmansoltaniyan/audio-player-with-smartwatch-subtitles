@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/playerPanel"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -113,39 +114,10 @@
             android:text="@string/next_lesson" />
     </LinearLayout>
 
-    <Button
-        android:id="@+id/endModeButton"
-        style="?attr/borderlessButtonStyle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" />
-
-    <Button
-        android:id="@+id/speedButton"
-        style="?attr/borderlessButtonStyle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" />
-
-    <com.google.android.material.materialswitch.MaterialSwitch
-        android:id="@+id/autoOpenSwitch"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/auto_open_watch" />
-
-    <com.google.android.material.materialswitch.MaterialSwitch
-        android:id="@+id/keepWatchOpenSwitch"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/keep_watch_open" />
-
-    <com.google.android.material.materialswitch.MaterialSwitch
-        android:id="@+id/holdTextSwitch"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/hold_text" />
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
@@ -156,17 +128,12 @@
             android:layout_weight="1"
             android:textAppearance="?attr/textAppearanceBodySmall" />
 
-        <TextView
-            android:id="@+id/versionText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textAppearance="?attr/textAppearanceBodySmall" />
-
         <Button
-            android:id="@+id/updateButton"
-            style="?attr/borderlessButtonStyle"
+            android:id="@+id/settingsButton"
+            style="@style/Widget.Material3.Button.TextButton.Icon"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/check_update" />
+            android:text="@string/settings"
+            app:icon="@drawable/ic_settings" />
     </LinearLayout>
 </LinearLayout>

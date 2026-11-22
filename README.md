@@ -41,7 +41,8 @@ all its sub folders are scanned for audio files, sorted by name (`gang9` comes b
   Long-press to select lessons and add them to a playlist. Pull down to scan again.
 - **Playlists tab:** your own playlists. Create, rename, delete; open one to play from any lesson,
   drag ≡ to reorder, ✕ to remove a lesson.
-- **Player tab:** ⏮ Lesson / Lesson ⏭ move through the playlist (or sub folder). "At the end" sets
+- **Player tab:** ⏮ Lesson / Lesson ⏭ move through the playlist (or sub folder). The settings below
+  are under **⚙ Settings**. "At the end" sets
   what happens when a lesson ends: stop, repeat the lesson, play the next lesson, or play the next
   lesson and start again after the last one. "Speed" plays slower or faster (0.5× to 2×) without
   changing the pitch; the text on the phone and the watch stays in sync.

@@ -29,6 +29,7 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.common.util.concurrent.ListenableFuture
@@ -51,6 +52,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var endModeButton: Button
     private lateinit var speedButton: Button
     private lateinit var updateButton: Button
+    private lateinit var settingsSheet: BottomSheetDialog
     private lateinit var miniBar: View
     private lateinit var miniTitle: TextView
     private lateinit var miniPlay: Button
@@ -123,9 +125,13 @@ class MainActivity : AppCompatActivity() {
         })
         watchStatus = findViewById(R.id.watchStatus)
         playButton = findViewById(R.id.playButton)
-        endModeButton = findViewById(R.id.endModeButton)
-        speedButton = findViewById(R.id.speedButton)
-        updateButton = findViewById(R.id.updateButton)
+        // Settings live in a bottom sheet; its views are created once and kept.
+        val settings = layoutInflater.inflate(R.layout.sheet_settings, null)
+        settingsSheet = BottomSheetDialog(this).apply { setContentView(settings) }
+        findViewById<View>(R.id.settingsButton).setOnClickListener { settingsSheet.show() }
+        endModeButton = settings.findViewById(R.id.endModeButton)
+        speedButton = settings.findViewById(R.id.speedButton)
+        updateButton = settings.findViewById(R.id.updateButton)
         miniBar = findViewById(R.id.miniBar)
         miniTitle = findViewById(R.id.miniTitle)
         miniPlay = findViewById(R.id.miniPlay)
@@ -154,16 +160,16 @@ class MainActivity : AppCompatActivity() {
         speedButton.setOnClickListener { chooseSpeed() }
         refreshSpeedButton()
         updateButton.setOnClickListener { checkForUpdate() }
-        findViewById<TextView>(R.id.versionText).text = getString(R.string.version, BuildConfig.VERSION_NAME)
-        findViewById<MaterialSwitch>(R.id.autoOpenSwitch).apply {
+        settings.findViewById<TextView>(R.id.versionText).text = getString(R.string.version, BuildConfig.VERSION_NAME)
+        settings.findViewById<MaterialSwitch>(R.id.autoOpenSwitch).apply {
             isChecked = Prefs.autoOpenWatch(this@MainActivity)
             setOnCheckedChangeListener { _, checked -> Prefs.setAutoOpenWatch(this@MainActivity, checked) }
         }
-        findViewById<MaterialSwitch>(R.id.holdTextSwitch).apply {
+        settings.findViewById<MaterialSwitch>(R.id.holdTextSwitch).apply {
             isChecked = Prefs.holdTextDuringPersian(this@MainActivity)
             setOnCheckedChangeListener { _, checked -> Prefs.setHoldTextDuringPersian(this@MainActivity, checked) }
         }
-        findViewById<MaterialSwitch>(R.id.keepWatchOpenSwitch).apply {
+        settings.findViewById<MaterialSwitch>(R.id.keepWatchOpenSwitch).apply {
             isChecked = Prefs.keepWatchOpen(this@MainActivity)
             setOnCheckedChangeListener { _, checked -> Prefs.setKeepWatchOpen(this@MainActivity, checked) }
         }
