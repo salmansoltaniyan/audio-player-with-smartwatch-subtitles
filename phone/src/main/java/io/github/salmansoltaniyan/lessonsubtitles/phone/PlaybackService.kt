@@ -1,6 +1,14 @@
 package io.github.salmansoltaniyan.lessonsubtitles.phone
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.pm.ServiceInfo
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
+import androidx.media3.session.DefaultMediaNotificationProvider
+import org.json.JSONObject
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Handler
@@ -46,6 +54,14 @@ class PlaybackService : MediaSessionService() {
     private var sentLesson: Lesson? = null
     private var lastAutoOpenMs = 0L
     private var lastSaveMs = 0L
+    private var holdText = true
+
+    /** Opens the watch app again when it was covered while playing (see Prefs.keepWatchOpen). */
+    private val reopenWatchApp = Runnable {
+        if (player.isPlaying && Prefs.keepWatchOpen(this) && !LessonStore.watchVisible.value) {
+            scope.launch { WatchLink.openAppOnWatch(this@PlaybackService) }
+        }
+    }
 
     /** The lesson that was playing before the last media item transition. */
     private var previousPath: String? = null
@@ -68,11 +84,19 @@ class PlaybackService : MediaSessionService() {
     }
 
     // Wearable listeners are called on the main thread.
+    // Commands from the watch arrive through WatchCommandService, also when this service is not running.
     private val watchListener = MessageClient.OnMessageReceivedListener { event ->
-        when (event.path) {
-            WatchProtocol.PATH_COMMAND -> handleCommand(String(event.data, Charsets.UTF_8))
-            // The watch app just opened: send it the current text.
-            WatchProtocol.PATH_WATCH_STATE -> sendCurrent()
+        if (event.path != WatchProtocol.PATH_WATCH_STATE) return@OnMessageReceivedListener
+        val visible = try {
+            JSONObject(String(event.data, Charsets.UTF_8)).optBoolean("visible", false)
+        } catch (_: Exception) {
+            false
+        }
+        handler.removeCallbacks(reopenWatchApp)
+        if (visible) {
+            sendCurrent() // the watch app just opened: send it the current text
+        } else if (player.isPlaying && Prefs.keepWatchOpen(this)) {
+            handler.postDelayed(reopenWatchApp, REOPEN_WATCH_DELAY_MS)
         }
     }
 
@@ -81,10 +105,16 @@ class PlaybackService : MediaSessionService() {
         if (Prefs.isEndModeKey(key)) applyEndMode()
         // The subtitle is found from the media position, so it stays in sync at any speed.
         if (Prefs.isSpeedKey(key)) player.setPlaybackSpeed(Prefs.speed(this))
+        if (Prefs.isHoldTextKey(key)) {
+            holdText = Prefs.holdTextDuringPersian(this)
+            update()
+        }
     }
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
+        holdText = Prefs.holdTextDuringPersian(this)
 
         // Index seeking makes "previous/next segment" land on the exact time, also in VBR MP3s.
         val extractors = DefaultExtractorsFactory()
@@ -110,7 +140,12 @@ class PlaybackService : MediaSessionService() {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 handler.removeCallbacks(tick)
                 handler.post(tick)
-                if (isPlaying) maybeOpenWatchApp() else savePosition()
+                if (isPlaying) {
+                    maybeOpenWatchApp()
+                } else {
+                    handler.removeCallbacks(reopenWatchApp)
+                    savePosition()
+                }
             }
 
             override fun onPositionDiscontinuity(
@@ -239,7 +274,8 @@ class PlaybackService : MediaSessionService() {
         LessonStore.positionMs.value = positionMs
         LessonStore.durationMs.value = player.duration.takeIf { it != C.TIME_UNSET } ?: 0L
 
-        val index = lesson?.indexAt(positionMs / 1000.0) ?: -1
+        val spoken = lesson?.indexAt(positionMs / 1000.0) ?: -1
+        val index = lesson?.shownIndex(spoken, holdText) ?: -1
         val playing = player.isPlaying
         if (index != sentIndex || playing != sentPlaying || lesson !== sentLesson) {
             sentIndex = index
@@ -271,8 +307,10 @@ class PlaybackService : MediaSessionService() {
         watch.send(lesson?.segments?.getOrNull(LessonStore.currentIndex.value), player.isPlaying)
     }
 
+    val hasMedia: Boolean get() = player.mediaItemCount > 0
+
     /** Buttons on the watch. Moving to a segment also starts playback. */
-    private fun handleCommand(command: String) {
+    fun handleCommand(command: String) {
         if (player.mediaItemCount == 0) return
         if (command == "toggle") {
             if (player.isPlaying) {
@@ -306,6 +344,66 @@ class PlaybackService : MediaSessionService() {
         scope.launch { WatchLink.openAppOnWatch(this@PlaybackService) }
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action != ACTION_PLAY_FROM_WATCH) return super.onStartCommand(intent, flags, startId)
+        // Started with startForegroundService: become a foreground service right away. The media
+        // notification uses the same id, so it replaces this one when playback starts.
+        try {
+            startForegroundNow()
+        } catch (_: Exception) {
+            // Android did not allow a foreground service now (background start limits).
+            if (player.mediaItemCount == 0) stopSelf()
+            return START_NOT_STICKY
+        }
+        if (!playLastQueue()) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+        return START_NOT_STICKY
+    }
+
+    /** Plays the current lesson, or loads the last played queue and continues it. */
+    private fun playLastQueue(): Boolean {
+        if (player.mediaItemCount > 0) {
+            if (player.playbackState == Player.STATE_ENDED) player.seekTo(0)
+            player.play()
+            return true
+        }
+        val queue = Prefs.lastQueue(this) ?: return false
+        val last = Prefs.lastPlayed(this)
+        val start = queue.items.indexOfFirst { it.relPath == last?.lessonPath }.coerceAtLeast(0)
+        val positionMs = Prefs.lessonPosition(this, queue.items[start].relPath)
+        LessonStore.queue.value = queue // before the media items: loadTimeline() reads it
+        player.setMediaItems(queue.items.map { it.toMediaItem() }, start, positionMs)
+        player.prepare()
+        player.play()
+        return true
+    }
+
+    private fun startForegroundNow() {
+        val channelId = DefaultMediaNotificationProvider.DEFAULT_CHANNEL_ID
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(NotificationManager::class.java)
+            if (manager.getNotificationChannel(channelId) == null) {
+                manager.createNotificationChannel(
+                    NotificationChannel(channelId, getString(R.string.app_name), NotificationManager.IMPORTANCE_LOW)
+                )
+            }
+        }
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.drawable.ic_nav_player)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(getString(R.string.now_playing))
+            .setSilent(true)
+            .build()
+        ServiceCompat.startForeground(
+            this,
+            DefaultMediaNotificationProvider.DEFAULT_NOTIFICATION_ID,
+            notification,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0,
+        )
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -314,6 +412,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        if (instance === this) instance = null
+        handler.removeCallbacks(reopenWatchApp)
         savePosition()
         handler.removeCallbacks(tick)
         Prefs.prefs(this).unregisterOnSharedPreferenceChangeListener(prefsListener)
@@ -325,10 +425,18 @@ class PlaybackService : MediaSessionService() {
         super.onDestroy()
     }
 
-    private companion object {
-        const val TICK_MS = 100L
-        const val SAVE_EVERY_MS = 5_000L
-        const val AUTO_OPEN_COOLDOWN_MS = 30_000L
-        const val FINISHED_MARGIN_MS = 2_000L
+    companion object {
+        /** Start action used by WatchCommandService: continue the last lesson. */
+        const val ACTION_PLAY_FROM_WATCH = "io.github.salmansoltaniyan.lessonsubtitles.PLAY_FROM_WATCH"
+
+        /** The running service, if any. Only used on the main thread. */
+        var instance: PlaybackService? = null
+            private set
+
+        private const val REOPEN_WATCH_DELAY_MS = 3_000L
+        private const val TICK_MS = 100L
+        private const val SAVE_EVERY_MS = 5_000L
+        private const val AUTO_OPEN_COOLDOWN_MS = 30_000L
+        private const val FINISHED_MARGIN_MS = 2_000L
     }
 }

@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">Lesson Subtitles</string>
     <string name="complication_text">Lesson</string>
-    <string name="waiting">Open a lesson on the phone</string>
+    <string name="waiting">Tap here to play the last lesson</string>
     <string name="paused">Paused</string>
     <string name="previous">Previous segment</string>
     <string name="repeat">Repeat segment</string>

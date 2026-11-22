@@ -36,6 +36,19 @@
             </intent-filter>
         </service>
 
+        <!-- Commands from the watch, also when the app is not running (started by Play services). -->
+        <service
+            android:name=".WatchCommandService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data
+                    android:host="*"
+                    android:pathPrefix="/lesson/command"
+                    android:scheme="wear" />
+            </intent-filter>
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updates"

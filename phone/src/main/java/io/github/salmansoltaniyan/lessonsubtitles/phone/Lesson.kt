@@ -12,7 +12,9 @@ data class Segment(
     val tag: String,
     val lang: String,
     val text: String,
-)
+) {
+    val isPersian: Boolean get() = lang.equals("persian", ignoreCase = true)
+}
 
 /** An MP3 file plus its JSON timeline. */
 data class Lesson(
@@ -42,6 +44,16 @@ data class Lesson(
             }
         }
         return found
+    }
+
+    /**
+     * The segment to show for the spoken segment [index]: with [holdDuringPersian], a Persian
+     * segment shows the last non-Persian segment before it instead (if there is one).
+     */
+    fun shownIndex(index: Int, holdDuringPersian: Boolean): Int {
+        if (!holdDuringPersian || index < 0 || !segments[index].isPersian) return index
+        for (i in index - 1 downTo 0) if (!segments[i].isPersian) return i
+        return index
     }
 
     companion object {

@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -25,6 +27,13 @@ data class LessonFile(
 ) {
     val title: String get() = fileName.substringBeforeLast('.')
     val hasTimeline: Boolean get() = hasTag || jsonUri != null
+
+    /** The item for the player; its mediaId is [relPath]. */
+    fun toMediaItem(): MediaItem = MediaItem.Builder()
+        .setMediaId(relPath)
+        .setUri(audioUri)
+        .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
+        .build()
 }
 
 /** The lessons being played, in order. */

@@ -3,6 +3,8 @@ package io.github.salmansoltaniyan.lessonsubtitles.phone
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** What happens when a lesson ends. */
 enum class EndMode(val labelRes: Int) {
@@ -17,6 +19,9 @@ object Prefs {
     private const val END_MODE = "end_mode"
     private const val OLD_REPEAT_LESSON = "repeat_lesson" // version 0.1.2
     private const val SPEED = "speed"
+    private const val HOLD_TEXT = "hold_text_during_persian"
+    private const val KEEP_WATCH_OPEN = "keep_watch_open"
+    private const val LAST_QUEUE_ITEMS = "last_queue_items"
     private const val AUTO_OPEN_WATCH = "auto_open_watch"
     private const val LESSONS_FOLDER = "lessons_folder"
     private const val LAST_QUEUE = "last_queue"
@@ -49,6 +54,20 @@ object Prefs {
     /** Shows a speed as "0.8×", "1×", "1.25×". */
     fun speedLabel(speed: Float): String =
         java.math.BigDecimal(speed.toString()).stripTrailingZeros().toPlainString() + "×"
+
+    /**
+     * While a Persian segment is spoken, keep showing the text before it (Dutch, English, ...),
+     * so the text only changes for the other languages.
+     */
+    fun holdTextDuringPersian(context: Context) = prefs(context).getBoolean(HOLD_TEXT, true)
+    fun setHoldTextDuringPersian(context: Context, value: Boolean) =
+        prefs(context).edit().putBoolean(HOLD_TEXT, value).apply()
+    fun isHoldTextKey(key: String?) = key == HOLD_TEXT
+
+    /** While playing, open the watch app again when another app or the watch face covers it. */
+    fun keepWatchOpen(context: Context) = prefs(context).getBoolean(KEEP_WATCH_OPEN, true)
+    fun setKeepWatchOpen(context: Context, value: Boolean) =
+        prefs(context).edit().putBoolean(KEEP_WATCH_OPEN, value).apply()
 
     /** Open the app on the watch when playback starts. */
     fun autoOpenWatch(context: Context) = prefs(context).getBoolean(AUTO_OPEN_WATCH, true)
@@ -83,6 +102,51 @@ object Prefs {
         val queue = p.getString(LAST_QUEUE, null) ?: return null
         val lesson = p.getString(LAST_LESSON, null) ?: return null
         return LastPlayed(queue, lesson, p.getLong(LAST_POSITION, 0))
+    }
+
+    /**
+     * The queue that was played last, with its files, so the player can start it without scanning
+     * the lessons folder (for example when the watch starts playback and the app is not open).
+     */
+    fun setLastQueue(context: Context, queue: PlayQueue) {
+        val items = JSONArray()
+        for (f in queue.items) {
+            items.put(
+                JSONObject()
+                    .put("path", f.relPath).put("name", f.fileName).put("folder", f.folder)
+                    .put("audio", f.audioUri.toString()).put("json", f.jsonUri?.toString() ?: "")
+                    .put("tag", f.hasTag)
+            )
+        }
+        val json = JSONObject().put("id", queue.id).put("title", queue.title).put("items", items)
+        prefs(context).edit().putString(LAST_QUEUE_ITEMS, json.toString()).apply()
+    }
+
+    fun lastQueue(context: Context): PlayQueue? = try {
+        val saved = prefs(context).getString(LAST_QUEUE_ITEMS, null)
+        if (saved == null) {
+            null
+        } else {
+            val json = JSONObject(saved)
+            val items = json.getJSONArray("items")
+            PlayQueue(
+                id = json.getString("id"),
+                title = json.optString("title"),
+                items = (0 until items.length()).map { i ->
+                    val o = items.getJSONObject(i)
+                    LessonFile(
+                        relPath = o.getString("path"),
+                        fileName = o.getString("name"),
+                        folder = o.optString("folder"),
+                        audioUri = Uri.parse(o.getString("audio")),
+                        jsonUri = o.optString("json").ifEmpty { null }?.let(Uri::parse),
+                        hasTag = o.optBoolean("tag"),
+                    )
+                },
+            ).takeIf { it.items.isNotEmpty() }
+        }
+    } catch (_: Exception) {
+        null
     }
 
     fun setLastPlayed(context: Context, last: LastPlayed) = prefs(context).edit()

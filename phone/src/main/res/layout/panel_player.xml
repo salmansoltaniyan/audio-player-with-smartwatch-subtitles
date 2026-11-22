@@ -131,6 +131,18 @@
         android:layout_height="wrap_content"
         android:text="@string/auto_open_watch" />
 
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/keepWatchOpenSwitch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/keep_watch_open" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/holdTextSwitch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/hold_text" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

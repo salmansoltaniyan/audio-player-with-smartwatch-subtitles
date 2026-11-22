@@ -32,6 +32,12 @@
     <string name="speed_title">Playback speed</string>
     <string name="speed_button">Speed: %1$s</string>
     <string name="auto_open_watch">Open the app on the watch when playing</string>
+    <string name="keep_watch_open">Keep the watch app on screen while playing</string>
+    <string name="hold_text">While Persian is spoken, keep showing the text before it</string>
+    <string name="watch_request_channel">Requests from the watch</string>
+    <string name="watch_request_title">The watch wants to play the lesson</string>
+    <string name="watch_request_text">Tap to continue the last lesson.</string>
+    <string name="now_playing">Starting the lesson…</string>
     <string name="watch_connected">Watch connected</string>
     <string name="watch_not_connected">No watch connected</string>
     <string name="watch_unknown">Checking watch…</string>

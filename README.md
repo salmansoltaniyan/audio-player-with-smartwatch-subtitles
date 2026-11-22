@@ -23,7 +23,7 @@ Watch controls:
 |-----------------------------|--------|
 | ⟲ (middle button)           | Play the current segment again from its start. |
 | ⏮ / ⏭                       | Play the previous / next segment. |
-| Tap the text                | Play / pause. |
+| Tap the text                | Play / pause. Also works when the phone app is not open: the phone continues the last lesson. |
 | Touch bezel (Galaxy Watch)  | Clockwise: next segment. Counter-clockwise: previous segment. |
 
 To open the watch app from the watch face, add the "Lesson Subtitles" complication to a slot of the
@@ -45,6 +45,10 @@ all its sub folders are scanned for audio files, sorted by name (`gang9` comes b
   what happens when a lesson ends: stop, repeat the lesson, play the next lesson, or play the next
   lesson and start again after the last one. "Speed" plays slower or faster (0.5× to 2×) without
   changing the pitch; the text on the phone and the watch stays in sync.
+- "While Persian is spoken, keep showing the text before it" (on by default): during a Persian
+  segment the phone and the watch keep showing the Dutch/English/German text before it.
+- "Keep the watch app on screen while playing" (on by default): if the watch face or another app
+  covers the watch app while a lesson plays, the phone opens it again after 3 seconds. Pause to leave.
 - Every lesson remembers where you stopped and continues there next time (also after closing the
   app); a lesson that was played to the end starts again from the beginning. Drag the bar on the
   Player tab to go to any point, for example back to the start.

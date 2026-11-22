@@ -25,8 +25,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -160,6 +158,14 @@ class MainActivity : AppCompatActivity() {
         findViewById<MaterialSwitch>(R.id.autoOpenSwitch).apply {
             isChecked = Prefs.autoOpenWatch(this@MainActivity)
             setOnCheckedChangeListener { _, checked -> Prefs.setAutoOpenWatch(this@MainActivity, checked) }
+        }
+        findViewById<MaterialSwitch>(R.id.holdTextSwitch).apply {
+            isChecked = Prefs.holdTextDuringPersian(this@MainActivity)
+            setOnCheckedChangeListener { _, checked -> Prefs.setHoldTextDuringPersian(this@MainActivity, checked) }
+        }
+        findViewById<MaterialSwitch>(R.id.keepWatchOpenSwitch).apply {
+            isChecked = Prefs.keepWatchOpen(this@MainActivity)
+            setOnCheckedChangeListener { _, checked -> Prefs.setKeepWatchOpen(this@MainActivity, checked) }
         }
 
         libraryPanel = LibraryPanel(this, findViewById(R.id.libraryPanel))
@@ -317,7 +323,8 @@ class MainActivity : AppCompatActivity() {
                 toast(getString(R.string.continuing_at, formatTime(resumeMs / 1000)))
             }
             LessonStore.queue.value = queue // before the media items: the service reads it
-            c.setMediaItems(queue.items.map(::mediaItemFor), start, resumeMs)
+            Prefs.setLastQueue(this, queue)
+            c.setMediaItems(queue.items.map { it.toMediaItem() }, start, resumeMs)
         }
         if (c.playbackState == Player.STATE_IDLE) c.prepare()
         if (c.playbackState == Player.STATE_ENDED) c.seekTo(0)
@@ -326,12 +333,6 @@ class MainActivity : AppCompatActivity() {
             bottomNav.selectedItemId = R.id.nav_player
         }
     }
-
-    private fun mediaItemFor(file: LessonFile): MediaItem = MediaItem.Builder()
-        .setMediaId(file.relPath)
-        .setUri(file.audioUri)
-        .setMediaMetadata(MediaMetadata.Builder().setTitle(file.title).build())
-        .build()
 
     /** When the app starts with an empty player, goes back to where the user was (paused). */
     private fun restoreLastPlayed(autoPlay: Boolean = false): Boolean {
